@@ -10,7 +10,12 @@ mod camera {
     struct MainCamera;
 
     pub fn init(mut commands: Commands) {
-        commands.spawn((Camera2dBundle::default(), MainCamera));
+        commands.spawn((
+            Camera2dBundle {
+                ..default()
+            },
+            MainCamera,
+        ));
     }
 
     fn set_cursor_position(
