@@ -3007,6 +3007,16 @@ name = "stttwmdtt"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "stttwmdtt_derive",
+]
+
+[[package]]
+name = "stttwmdtt_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.48",
 ]
 
 [[package]]

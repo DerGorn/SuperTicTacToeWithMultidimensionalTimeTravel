@@ -1,21 +1,14 @@
 use bevy::prelude::*;
-
 mod camera {
+    use super::*;
     use bevy::window::PrimaryWindow;
     use stttwmdtt::CursorPosition;
-
-    use super::*;
 
     #[derive(Component)]
     struct MainCamera;
 
     pub fn init(mut commands: Commands) {
-        commands.spawn((
-            Camera2dBundle {
-                ..default()
-            },
-            MainCamera,
-        ));
+        commands.spawn((Camera2dBundle { ..default() }, MainCamera));
     }
 
     fn set_cursor_position(
@@ -46,10 +39,18 @@ mod camera {
     }
 }
 
+mod sttt;
 mod ttt;
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, camera::CameraPlugin, ttt::TicTacToePlugin))
+        .add_plugins((
+            DefaultPlugins,
+            camera::CameraPlugin,
+            sttt::SuperTicTacToePlugin::default()
+                .game_rows(3)
+                .games_per_row(5),
+        ))
+        .add_plugins(ttt::MouseListenerPlugin)
         .run();
 }
