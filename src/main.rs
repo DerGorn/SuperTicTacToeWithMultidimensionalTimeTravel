@@ -1,4 +1,12 @@
 use bevy::prelude::*;
+
+const BACKGORUND_COLOR: Color = Color::Rgba {
+    red: 0.15,
+    green: 0.15,
+    blue: 0.15,
+    alpha: 1.0,
+};
+
 mod camera {
     use super::*;
     use bevy::window::PrimaryWindow;
@@ -8,7 +16,17 @@ mod camera {
     struct MainCamera;
 
     pub fn init(mut commands: Commands) {
-        commands.spawn((Camera2dBundle { ..default() }, MainCamera));
+        commands.spawn((
+            Camera2dBundle {
+                camera_2d: Camera2d {
+                    clear_color: bevy::core_pipeline::clear_color::ClearColorConfig::Custom(
+                        BACKGORUND_COLOR,
+                    ),
+                },
+                ..default()
+            },
+            MainCamera,
+        ));
     }
 
     fn set_cursor_position(
@@ -49,7 +67,8 @@ fn main() {
             camera::CameraPlugin,
             sttt::SuperTicTacToePlugin::default()
                 .game_rows(3)
-                .games_per_row(5),
+                .games_per_row(5)
+                .background_color(BACKGORUND_COLOR),
         ))
         .add_plugins(ttt::MouseListenerPlugin)
         .run();

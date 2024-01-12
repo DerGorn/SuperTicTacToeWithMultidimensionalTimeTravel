@@ -8,3 +8,12 @@ impl Default for CursorPosition {
         Self(Default::default())
     }
 }
+
+#[derive(Resource)]
+pub struct ActiveGame(pub u64);
+
+impl Default for ActiveGame {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}

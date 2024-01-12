@@ -1,26 +1,23 @@
 use super::{
     square::{Cell, Hover, SquareSize},
-    GameId, GridPosition,
+    GameId, GridPosition, Inactive,
 };
 use bevy::prelude::*;
-use stttwmdtt::CursorPosition;
+use stttwmdtt::{ActiveGame, CursorPosition};
+use stttwmdtt_derive::MouseEvent;
 
-#[derive(Event)]
-struct MouseEnteredCell {
-    grid_pos: GridPosition,
+trait MouseEvent<T: Clone + PartialEq>: Event + From<T> {
+    fn value(&self) -> &T;
 }
-#[derive(Event)]
-struct MouseEnteredGame {
-    game_id: GameId,
-}
-#[derive(Event)]
-struct MouseExitedCell {
-    grid_pos: GridPosition,
-}
-#[derive(Event)]
-struct MouseExitedGame {
-    game_id: GameId,
-}
+
+#[derive(Event, MouseEvent)]
+struct MouseEnteredCell(GridPosition);
+#[derive(Event, MouseEvent)]
+struct MouseEnteredGame(GameId);
+#[derive(Event, MouseEvent)]
+struct MouseExitedCell(GridPosition);
+#[derive(Event, MouseEvent)]
+struct MouseExitedGame(GameId);
 
 #[derive(Resource)]
 struct HoveredPosition {
@@ -36,22 +33,50 @@ impl Default for HoveredPosition {
     }
 }
 
+fn mouse_event_sender<T: Clone + PartialEq>(
+    reference: &Option<T>,
+    value: &Option<T>,
+    mut entered: EventWriter<impl MouseEvent<T>>,
+    mut exited: EventWriter<impl MouseEvent<T>>,
+) {
+    match (reference, value) {
+        (None, Some(v)) => entered.send(v.clone().into()),
+        (Some(v1), Some(v2)) if v1 != v2 => {
+            entered.send(v2.clone().into());
+            exited.send(v1.clone().into());
+        }
+        (Some(v), None) => exited.send(v.clone().into()),
+        _ => {}
+    }
+}
+
 macro_rules! inner_hover_listener {
-    ($fn_name:ident, $event_type:ty, $event_field:ident, $query:ty, $visibility:ident) => {
+    ($fn_name:ident, $event_type:ty, $query:ty, $visibility:ident) => {
         fn $fn_name(
+            active_game: Res<ActiveGame>,
             mut event_reader: EventReader<$event_type>,
             query: $query,
-            mut q_hovers: Query<&mut Visibility, With<Hover>>,
+            mut q_hovers: Query<&mut Visibility, (With<Hover>, Without<Inactive>)>,
+            mut q_inactive_hovers: Query<&mut Visibility, (With<Hover>, With<Inactive>)>,
         ) {
             for event in event_reader.read() {
-                let check_value = &event.$event_field;
+                let check_value = &event.0;
                 println!("{}: {:?}", stringify!($fn_name), check_value);
                 for (value, children) in query.iter() {
                     if value == check_value {
-                        let hover = children.first().expect("What happened to the hover?");
-                        let mut visibility = q_hovers
-                            .get_mut(*hover)
-                            .expect("Why has the hover no Visibility?");
+                        let mut visibility = if check_value == active_game.as_ref() {
+                            let hover = children.first().expect("What happened to the hover?");
+                            q_hovers
+                                .get_mut(*hover)
+                                .expect("Why has the hover no Visibility?")
+                        } else {
+                            let hover = children
+                                .get(1)
+                                .expect("What happened to the inactive_hover?");
+                            q_inactive_hovers
+                                .get_mut(*hover)
+                                .expect("Why has the inactive_hover no visibility?")
+                        };
                         *visibility = Visibility::$visibility;
                         break;
                     }
@@ -61,38 +86,34 @@ macro_rules! inner_hover_listener {
     };
 }
 macro_rules! hover_listener {
-    ($fn_name:ident, $event_type:ty, $event_field:ident, Query<($query:ty, &Children)>, $visibility:ident) => {
-        inner_hover_listener!($fn_name, $event_type, $event_field, Query<($query, &Children)>, $visibility);
+    ($fn_name:ident, $event_type:ty, Query<($query:ty, &Children)>, $visibility:ident) => {
+        inner_hover_listener!($fn_name, $event_type, Query<($query, &Children)>, $visibility);
     };
-    ($fn_name:ident, $event_type:ty, $event_field:ident, Query<($query:ty, &Children), $with:ty>, $visibility:ident) => {
-        inner_hover_listener!($fn_name, $event_type, $event_field, Query<($query, &Children), $with>, $visibility);
+    ($fn_name:ident, $event_type:ty, Query<($query:ty, &Children), $with:ty>, $visibility:ident) => {
+        inner_hover_listener!($fn_name, $event_type, Query<($query, &Children), $with>, $visibility);
     };
 }
 hover_listener!(
     highlight_hover_cell,
     MouseEnteredCell,
-    grid_pos,
     Query<(&GridPosition, &Children), With<Cell>>,
     Visible
 );
 hover_listener!(
     dehighlight_hover_cell,
     MouseExitedCell,
-    grid_pos,
     Query<(&GridPosition, &Children), With<Cell>>,
     Hidden
 );
 hover_listener!(
     highlight_hover_game,
     MouseEnteredGame,
-    game_id,
     Query<(&GameId, &Children)>,
     Visible
 );
 hover_listener!(
     dehighlight_hover_game,
     MouseExitedGame,
-    game_id,
     Query<(&GameId, &Children)>,
     Hidden
 );
@@ -100,10 +121,10 @@ hover_listener!(
 fn mouse_listener_hover(
     cursor: Res<CursorPosition>,
     mut hovered: ResMut<HoveredPosition>,
-    mut cell_entered: EventWriter<MouseEnteredCell>,
-    mut cell_exited: EventWriter<MouseExitedCell>,
-    mut game_entered: EventWriter<MouseEnteredGame>,
-    mut game_exited: EventWriter<MouseExitedGame>,
+    cell_entered: EventWriter<MouseEnteredCell>,
+    cell_exited: EventWriter<MouseExitedCell>,
+    game_entered: EventWriter<MouseEnteredGame>,
+    game_exited: EventWriter<MouseExitedGame>,
     q_hover_positions: Query<(&Parent, &GlobalTransform, &SquareSize), With<Hover>>,
     q_grid_pos: Query<&GridPosition, With<Cell>>,
     q_games: Query<&GameId>,
@@ -132,49 +153,24 @@ fn mouse_listener_hover(
         }
     }
 
-    match (&hovered.game_id, &new_hovered_id) {
-        (None, Some(id)) => game_entered.send(MouseEnteredGame {
-            game_id: id.clone(),
-        }),
-        (Some(id1), Some(id2)) if id1 != id2 => {
-            game_entered.send(MouseEnteredGame {
-                game_id: id2.clone(),
-            });
-            game_exited.send(MouseExitedGame {
-                game_id: id1.clone(),
-            });
-        }
-        (Some(id), None) => game_exited.send(MouseExitedGame {
-            game_id: id.clone(),
-        }),
-        _ => {}
-    }
+    mouse_event_sender(&hovered.game_id, &new_hovered_id, game_entered, game_exited);
     hovered.game_id = new_hovered_id;
 
-    match (&hovered.grid_pos, &new_hovered_pos) {
-        (None, Some(pos)) => cell_entered.send(MouseEnteredCell {
-            grid_pos: pos.clone(),
-        }),
-        (Some(pos1), Some(pos2)) if pos1 != pos2 => {
-            cell_entered.send(MouseEnteredCell {
-                grid_pos: pos2.clone(),
-            });
-            cell_exited.send(MouseExitedCell {
-                grid_pos: pos1.clone(),
-            });
-        }
-        (Some(pos), None) => cell_exited.send(MouseExitedCell {
-            grid_pos: pos.clone(),
-        }),
-        _ => {}
-    }
+    mouse_event_sender(
+        &hovered.grid_pos,
+        &new_hovered_pos,
+        cell_entered,
+        cell_exited,
+    );
     hovered.grid_pos = new_hovered_pos;
 }
 
 pub struct MouseListenerPlugin;
 impl Plugin for MouseListenerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CursorPosition>()
+        app.init_resource::<ActiveGame>()
+            .init_resource::<CursorPosition>()
+            .init_resource::<ActiveGame>()
             .init_resource::<HoveredPosition>()
             .add_event::<MouseEnteredCell>()
             .add_event::<MouseExitedCell>()

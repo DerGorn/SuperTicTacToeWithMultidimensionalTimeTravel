@@ -1,6 +1,8 @@
+use core::panic;
+
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Fields, FieldsNamed};
+use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Fields, FieldsNamed, FieldsUnnamed};
 
 #[proc_macro_derive(SquareType)]
 pub fn square_type_derive(input: TokenStream) -> TokenStream {
@@ -59,6 +61,34 @@ pub fn builder_derive(input: TokenStream) -> TokenStream {
     let gen = quote! {
         impl #impl_generics #name #generics #where_clause {
             #block
+        }
+    };
+    gen.into()
+}
+
+#[proc_macro_derive(MouseEvent)]
+pub fn mouse_event_derive(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+    let name = &ast.ident;
+    let ty = match &ast.data {
+        Data::Struct(DataStruct {
+            fields: Fields::Unnamed(FieldsUnnamed { unnamed, .. }),
+            ..
+        }) if unnamed.len() == 1 => &unnamed.first().unwrap().ty,
+        _ => panic!("Can only derive 'MouseEvent' for TupleStructs with one Field"),
+    };
+    let gen = quote! {
+        impl MouseEvent< #ty > for #name {
+            fn value(&self) -> & #ty {
+                &self.0
+            }
+        }
+        impl From< #ty> for #name {
+            fn from(value: #ty) -> Self {
+                Self (
+                    value,
+                )
+            }
         }
     };
     gen.into()

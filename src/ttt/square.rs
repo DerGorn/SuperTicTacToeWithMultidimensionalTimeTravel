@@ -16,6 +16,8 @@ pub struct Cell;
 pub struct Hover;
 #[derive(SquareType)]
 pub struct GameActive;
+#[derive(SquareType)]
+pub struct Square;
 
 #[derive(Bundle)]
 pub struct SquareBundle<M: Material2d, S: SquareType> {
