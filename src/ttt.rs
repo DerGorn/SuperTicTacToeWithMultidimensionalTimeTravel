@@ -1,7 +1,6 @@
 use std::fmt::{Debug, Display};
 
 use bevy::{prelude::*, sprite::Material2d};
-use stttwmdtt::CursorPosition;
 use stttwmdtt_derive::Builder;
 
 mod square;
@@ -15,9 +14,9 @@ use square::{GameActive, Hover, SquareBuilder};
 ///Multidimensional position of a cell.
 ///
 /// Currently 3D:
-/// x: x coordinate in a game,
-/// y: y coordinate in a game,
-/// id: id of the cells game
+/// - x: x coordinate in a game,
+/// - y: y coordinate in a game,
+/// - id: id of the cells game
 struct GridPosition {
     x: u8,
     y: u8,
@@ -43,6 +42,9 @@ impl Debug for GridPosition {
         write!(f, "{}", self)
     }
 }
+
+#[derive(Component, PartialEq, Clone, Debug)]
+struct GameId(u64);
 
 #[derive(Bundle)]
 struct CellBundle<M: Material2d> {
@@ -97,10 +99,13 @@ impl TicTacToePlugin {
         let game_highlight_size = game_hover_size + 2.0 * self.game_highlight_border;
 
         let game = commands
-            .spawn(SpatialBundle {
-                transform: Transform::from_translation(self.origin.extend(0.0)),
-                ..default()
-            })
+            .spawn((
+                SpatialBundle {
+                    transform: Transform::from_translation(self.origin.extend(0.0)),
+                    ..default()
+                },
+                GameId(self.game_id),
+            ))
             .with_children(|game| {
                 game.spawn(
                     SquareBuilder::new(&mut meshes, &mut materials)
@@ -193,7 +198,7 @@ impl Default for TicTacToePlugin {
 impl Plugin for TicTacToePlugin {
     fn build(&self, app: &mut App) {
         let builder = self.clone();
-        app.init_resource::<CursorPosition>().add_systems(
+        app.add_systems(
             Startup,
             move |commands: Commands,
                   meshes: ResMut<Assets<Mesh>>,

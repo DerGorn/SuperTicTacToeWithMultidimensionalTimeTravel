@@ -1,121 +1,192 @@
+use super::{
+    square::{Cell, Hover, SquareSize},
+    GameId, GridPosition,
+};
 use bevy::prelude::*;
 use stttwmdtt::CursorPosition;
-use super::{square::{Hover, SquareSize, Cell}, GridPosition};
 
 #[derive(Event)]
-struct MouseEntered {
+struct MouseEnteredCell {
     grid_pos: GridPosition,
 }
 #[derive(Event)]
-struct MouseExited {
+struct MouseEnteredGame {
+    game_id: GameId,
+}
+#[derive(Event)]
+struct MouseExitedCell {
     grid_pos: GridPosition,
+}
+#[derive(Event)]
+struct MouseExitedGame {
+    game_id: GameId,
 }
 
 #[derive(Resource)]
-struct HoveredCell {
+struct HoveredPosition {
     grid_pos: Option<GridPosition>,
+    game_id: Option<GameId>,
 }
-impl Default for HoveredCell {
+impl Default for HoveredPosition {
     fn default() -> Self {
-        Self { grid_pos: None }
-    }
-}
-
-fn highlight_cell(
-    mut mouse_entered: EventReader<MouseEntered>,
-    q_grid_pos: Query<(&GridPosition, &Children), With<Cell>>,
-    mut q_hovers: Query<&mut Visibility, With<Hover>>,
-) {
-    if let Some(entered) = mouse_entered.read().last() {
-        println!("highlighting: {}", entered.grid_pos);
-        for (grid_pos, children) in q_grid_pos.iter() {
-            if grid_pos == &entered.grid_pos {
-                let hover = children.first().expect("What happened to the hover?");
-                let mut visibility = q_hovers
-                    .get_mut(*hover)
-                    .expect("Why has the hover no Visibility?");
-                *visibility = Visibility::Visible;
-            }
-        }
-    }
-}
-fn dehighlight_cell(
-    mut mouse_exited: EventReader<MouseExited>,
-    q_grid_pos: Query<(&GridPosition, &Children), With<Cell>>,
-    mut q_hovers: Query<&mut Visibility, With<Hover>>,
-) {
-    for exited in mouse_exited.read() {
-        for (grid_pos, children) in q_grid_pos.iter() {
-            if grid_pos == &exited.grid_pos {
-                let hover = children.first().expect("What happened to the hover?");
-                let mut visibility = q_hovers
-                    .get_mut(*hover)
-                    .expect("Why has the hover no Visibility?");
-                *visibility = Visibility::Hidden;
-            }
+        Self {
+            grid_pos: None,
+            game_id: None,
         }
     }
 }
 
-fn mouse_listener_cell(
+macro_rules! inner_hover_listener {
+    ($fn_name:ident, $event_type:ty, $event_field:ident, $query:ty, $visibility:ident) => {
+        fn $fn_name(
+            mut event_reader: EventReader<$event_type>,
+            query: $query,
+            mut q_hovers: Query<&mut Visibility, With<Hover>>,
+        ) {
+            for event in event_reader.read() {
+                let check_value = &event.$event_field;
+                println!("{}: {:?}", stringify!($fn_name), check_value);
+                for (value, children) in query.iter() {
+                    if value == check_value {
+                        let hover = children.first().expect("What happened to the hover?");
+                        let mut visibility = q_hovers
+                            .get_mut(*hover)
+                            .expect("Why has the hover no Visibility?");
+                        *visibility = Visibility::$visibility;
+                        break;
+                    }
+                }
+            }
+        }
+    };
+}
+macro_rules! hover_listener {
+    ($fn_name:ident, $event_type:ty, $event_field:ident, Query<($query:ty, &Children)>, $visibility:ident) => {
+        inner_hover_listener!($fn_name, $event_type, $event_field, Query<($query, &Children)>, $visibility);
+    };
+    ($fn_name:ident, $event_type:ty, $event_field:ident, Query<($query:ty, &Children), $with:ty>, $visibility:ident) => {
+        inner_hover_listener!($fn_name, $event_type, $event_field, Query<($query, &Children), $with>, $visibility);
+    };
+}
+hover_listener!(
+    highlight_hover_cell,
+    MouseEnteredCell,
+    grid_pos,
+    Query<(&GridPosition, &Children), With<Cell>>,
+    Visible
+);
+hover_listener!(
+    dehighlight_hover_cell,
+    MouseExitedCell,
+    grid_pos,
+    Query<(&GridPosition, &Children), With<Cell>>,
+    Hidden
+);
+hover_listener!(
+    highlight_hover_game,
+    MouseEnteredGame,
+    game_id,
+    Query<(&GameId, &Children)>,
+    Visible
+);
+hover_listener!(
+    dehighlight_hover_game,
+    MouseExitedGame,
+    game_id,
+    Query<(&GameId, &Children)>,
+    Hidden
+);
+
+fn mouse_listener_hover(
     cursor: Res<CursorPosition>,
-    mut hovered: ResMut<HoveredCell>,
-    mut mouse_entered: EventWriter<MouseEntered>,
-    mut mouse_exited: EventWriter<MouseExited>,
+    mut hovered: ResMut<HoveredPosition>,
+    mut cell_entered: EventWriter<MouseEnteredCell>,
+    mut cell_exited: EventWriter<MouseExitedCell>,
+    mut game_entered: EventWriter<MouseEnteredGame>,
+    mut game_exited: EventWriter<MouseExitedGame>,
     q_hover_positions: Query<(&Parent, &GlobalTransform, &SquareSize), With<Hover>>,
     q_grid_pos: Query<&GridPosition, With<Cell>>,
+    q_games: Query<&GameId>,
 ) {
     let mut new_hovered_pos = None;
+    let mut new_hovered_id = None;
     for (parent, transform, size) in &q_hover_positions {
         let half_size = size.0 / 2.0;
         let x_max = transform.transform_point(Vec3::X * half_size).x;
-        let x_min = transform.transform_point(Vec3::NEG_X * half_size).x;
+        let x_min: f32 = transform.transform_point(Vec3::NEG_X * half_size).x;
         let y_max = transform.transform_point(Vec3::Y * half_size).y;
         let y_min = transform.transform_point(Vec3::NEG_Y * half_size).y;
-        let cell_pos = cursor.0.extend(0.0);
-        if cell_pos.x >= x_min && cell_pos.x <= x_max && cell_pos.y >= y_min && cell_pos.y <= y_max
+        let cursor_pos = cursor.0.extend(0.0);
+        if cursor_pos.x >= x_min
+            && cursor_pos.x <= x_max
+            && cursor_pos.y >= y_min
+            && cursor_pos.y <= y_max
         {
-            match q_grid_pos.get(parent.get()) {
-                Ok(grid_pos) => {
-                    new_hovered_pos = Some(grid_pos.clone());
-                    break;
-                }
-                Err(_) => {}
+            if let Ok(grid_pos) = q_grid_pos.get(parent.get()) {
+                new_hovered_pos = Some(grid_pos.clone());
+                new_hovered_id = Some(GameId(grid_pos.id.clone()));
+                break;
+            } else if let Ok(game_id) = q_games.get(parent.get()) {
+                new_hovered_id = Some(game_id.clone());
             }
         }
     }
-    if let Some(new_pos) = new_hovered_pos {
-        if hovered
-            .grid_pos
-            .as_ref()
-            .and_then(|p| if p != &new_pos { None } else { Some(true) })
-            .is_none()
-        {
-            if let Some(old_pos) = &hovered.grid_pos {
-                mouse_exited.send(MouseExited {
-                    grid_pos: old_pos.clone(),
-                })
-            }
-            mouse_entered.send(MouseEntered {
-                grid_pos: new_pos.clone(),
+
+    match (&hovered.game_id, &new_hovered_id) {
+        (None, Some(id)) => game_entered.send(MouseEnteredGame {
+            game_id: id.clone(),
+        }),
+        (Some(id1), Some(id2)) if id1 != id2 => {
+            game_entered.send(MouseEnteredGame {
+                game_id: id2.clone(),
             });
-            hovered.grid_pos = Some(new_pos);
+            game_exited.send(MouseExitedGame {
+                game_id: id1.clone(),
+            });
         }
-    } else if let Some(old_pos) = &hovered.grid_pos {
-        mouse_exited.send(MouseExited {
-            grid_pos: old_pos.clone(),
-        });
-        hovered.grid_pos = None;
+        (Some(id), None) => game_exited.send(MouseExitedGame {
+            game_id: id.clone(),
+        }),
+        _ => {}
     }
+    hovered.game_id = new_hovered_id;
+
+    match (&hovered.grid_pos, &new_hovered_pos) {
+        (None, Some(pos)) => cell_entered.send(MouseEnteredCell {
+            grid_pos: pos.clone(),
+        }),
+        (Some(pos1), Some(pos2)) if pos1 != pos2 => {
+            cell_entered.send(MouseEnteredCell {
+                grid_pos: pos2.clone(),
+            });
+            cell_exited.send(MouseExitedCell {
+                grid_pos: pos1.clone(),
+            });
+        }
+        (Some(pos), None) => cell_exited.send(MouseExitedCell {
+            grid_pos: pos.clone(),
+        }),
+        _ => {}
+    }
+    hovered.grid_pos = new_hovered_pos;
 }
 
 pub struct MouseListenerPlugin;
 impl Plugin for MouseListenerPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<HoveredCell>()
-            .add_event::<MouseEntered>()
-            .add_event::<MouseExited>()
-            .add_systems(FixedUpdate, (highlight_cell, dehighlight_cell).chain())
-            .add_systems(Update, mouse_listener_cell);
+        app.init_resource::<CursorPosition>()
+            .init_resource::<HoveredPosition>()
+            .add_event::<MouseEnteredCell>()
+            .add_event::<MouseExitedCell>()
+            .add_event::<MouseEnteredGame>()
+            .add_event::<MouseExitedGame>()
+            .add_systems(
+                FixedUpdate,
+                (
+                    (highlight_hover_cell, dehighlight_hover_cell).chain(),
+                    (highlight_hover_game, dehighlight_hover_game).chain(),
+                ),
+            )
+            .add_systems(Update, mouse_listener_hover);
     }
 }

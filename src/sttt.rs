@@ -44,8 +44,8 @@ impl Default for SuperTicTacToePlugin {
             },
             game_hover_rim: 10.0,
             game_hover_color: Color::RgbaLinear {
-                red: 0.18,
-                green: 0.18,
+                red: 0.12,
+                green: 0.1,
                 blue: 0.2,
                 alpha: 1.0,
             },
