@@ -8,8 +8,15 @@ mod square;
 use square::{Cell, SquareBundle};
 
 mod mouse_listener;
+pub use mouse_listener::HoveredPosition;
+pub use mouse_listener::MouseExitedCell;
+pub use mouse_listener::MouseExitedGame;
 pub use mouse_listener::MouseListenerPlugin;
-use square::{GameActive, Hover, SquareBuilder};
+pub use mouse_listener::WrapperEvent;
+pub use square::{GameActive, Hover, SquareBuilder};
+
+mod click_listener;
+pub use click_listener::ClickListener;
 
 use self::square::Square;
 
@@ -20,13 +27,13 @@ use self::square::Square;
 /// - x: x coordinate in a game,
 /// - y: y coordinate in a game,
 /// - id: id of the cells game
-struct GridPosition {
-    x: u8,
-    y: u8,
+pub struct GridPosition {
+    x: i16,
+    y: i16,
     id: u64,
 }
 impl GridPosition {
-    fn new(x: u8, y: u8, game_id: u64) -> Self {
+    fn new(x: i16, y: i16, game_id: u64) -> Self {
         GridPosition { x, y, id: game_id }
     }
 }
@@ -52,7 +59,7 @@ impl Debug for GridPosition {
 }
 
 #[derive(Component, PartialEq, Clone, Debug)]
-struct GameId(u64);
+pub struct GameId(pub u64);
 impl PartialEq<ActiveGame> for GameId {
     fn eq(&self, other: &ActiveGame) -> bool {
         self.0 == other.0
@@ -135,6 +142,8 @@ impl TicTacToePlugin {
         let game_hover_size = game_size + 2.0 * self.game_padding;
         let game_highlight_size = game_hover_size + 2.0 * self.game_active_border_width;
 
+        let grid_origin = (self.n as i16 - 1) / 2;
+
         let game = commands
             .spawn((
                 SquareBuilder::new(&mut meshes, &mut materials)
@@ -190,7 +199,8 @@ impl TicTacToePlugin {
                     x as f32 * cell_width + cell_offset,
                     y as f32 * cell_width + cell_offset,
                 );
-                let grid_position = GridPosition::new(x, y, self.game_id);
+                let grid_position =
+                    GridPosition::new(x as i16 - grid_origin, y as i16 - grid_origin, self.game_id);
 
                 let cell = commands
                     .spawn(CellBundle {

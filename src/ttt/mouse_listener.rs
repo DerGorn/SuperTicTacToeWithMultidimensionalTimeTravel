@@ -4,25 +4,25 @@ use super::{
 };
 use bevy::prelude::*;
 use stttwmdtt::{ActiveGame, CursorPosition};
-use stttwmdtt_derive::MouseEvent;
+use stttwmdtt_derive::WrapperEvent;
 
-trait MouseEvent<T: Clone + PartialEq>: Event + From<T> {
+pub trait WrapperEvent<T: Clone + PartialEq>: Event + From<T> {
     fn value(&self) -> &T;
 }
 
-#[derive(Event, MouseEvent)]
+#[derive(Event, WrapperEvent)]
 struct MouseEnteredCell(GridPosition);
-#[derive(Event, MouseEvent)]
+#[derive(Event, WrapperEvent)]
 struct MouseEnteredGame(GameId);
-#[derive(Event, MouseEvent)]
-struct MouseExitedCell(GridPosition);
-#[derive(Event, MouseEvent)]
-struct MouseExitedGame(GameId);
+#[derive(Event, WrapperEvent)]
+pub struct MouseExitedCell(GridPosition);
+#[derive(Event, WrapperEvent)]
+pub struct MouseExitedGame(GameId);
 
 #[derive(Resource)]
-struct HoveredPosition {
-    grid_pos: Option<GridPosition>,
-    game_id: Option<GameId>,
+pub struct HoveredPosition {
+    pub grid_pos: Option<GridPosition>,
+    pub game_id: Option<GameId>,
 }
 impl Default for HoveredPosition {
     fn default() -> Self {
@@ -36,8 +36,8 @@ impl Default for HoveredPosition {
 fn mouse_event_sender<T: Clone + PartialEq>(
     reference: &Option<T>,
     value: &Option<T>,
-    mut entered: EventWriter<impl MouseEvent<T>>,
-    mut exited: EventWriter<impl MouseEvent<T>>,
+    mut entered: EventWriter<impl WrapperEvent<T>>,
+    mut exited: EventWriter<impl WrapperEvent<T>>,
 ) {
     match (reference, value) {
         (None, Some(v)) => entered.send(v.clone().into()),
@@ -52,33 +52,57 @@ fn mouse_event_sender<T: Clone + PartialEq>(
 
 macro_rules! inner_hover_listener {
     ($fn_name:ident, $event_type:ty, $query:ty, $visibility:ident) => {
-        fn $fn_name(
-            active_game: Res<ActiveGame>,
-            mut event_reader: EventReader<$event_type>,
-            query: $query,
-            mut q_hovers: Query<&mut Visibility, (With<Hover>, Without<Inactive>)>,
-            mut q_inactive_hovers: Query<&mut Visibility, (With<Hover>, With<Inactive>)>,
-        ) {
-            for event in event_reader.read() {
-                let check_value = &event.0;
-                println!("{}: {:?}", stringify!($fn_name), check_value);
-                for (value, children) in query.iter() {
-                    if value == check_value {
-                        let mut visibility = if check_value == active_game.as_ref() {
+        mod $fn_name {
+            use super::*;
+            pub fn active(
+                active_game: Res<ActiveGame>,
+                mut event_reader: EventReader<$event_type>,
+                query: $query,
+                mut q_hovers: Query<&mut Visibility, (With<Hover>, Without<Inactive>)>,
+            ) {
+                for event in event_reader.read() {
+                    let check_value = &event.0;
+                    if Visibility::$visibility == Visibility::Visible
+                        && check_value != active_game.as_ref()
+                    {
+                        continue;
+                    }
+                    println!("active {}: {:?}", stringify!($fn_name), check_value);
+                    for (value, children) in query.iter() {
+                        if value == check_value {
                             let hover = children.first().expect("What happened to the hover?");
-                            q_hovers
+                            let mut visibility = q_hovers
                                 .get_mut(*hover)
-                                .expect("Why has the hover no Visibility?")
-                        } else {
+                                .expect("Why has the hover no Visibility?");
+                            *visibility = Visibility::$visibility;
+                            break;
+                        }
+                    }
+                }
+            }
+            pub fn inactive(
+                active_game: Res<ActiveGame>,
+                mut event_reader: EventReader<$event_type>,
+                query: $query,
+                mut q_inactive_hovers: Query<&mut Visibility, (With<Hover>, With<Inactive>)>,
+            ) {
+                for event in event_reader.read() {
+                    let check_value = &event.0;
+                    if check_value == active_game.as_ref() {
+                        continue;
+                    }
+                    println!("inactive {}: {:?}", stringify!($fn_name), check_value);
+                    for (value, children) in query.iter() {
+                        if value == check_value {
                             let hover = children
                                 .get(1)
                                 .expect("What happened to the inactive_hover?");
-                            q_inactive_hovers
+                            let mut visibility = q_inactive_hovers
                                 .get_mut(*hover)
-                                .expect("Why has the inactive_hover no visibility?")
-                        };
-                        *visibility = Visibility::$visibility;
-                        break;
+                                .expect("Why has the inactive_hover no visibility?");
+                            *visibility = Visibility::$visibility;
+                            break;
+                        }
                     }
                 }
             }
@@ -170,17 +194,26 @@ impl Plugin for MouseListenerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ActiveGame>()
             .init_resource::<CursorPosition>()
-            .init_resource::<ActiveGame>()
             .init_resource::<HoveredPosition>()
             .add_event::<MouseEnteredCell>()
             .add_event::<MouseExitedCell>()
             .add_event::<MouseEnteredGame>()
             .add_event::<MouseExitedGame>()
             .add_systems(
-                FixedUpdate,
+                Update,
                 (
-                    (highlight_hover_cell, dehighlight_hover_cell).chain(),
-                    (highlight_hover_game, dehighlight_hover_game).chain(),
+                    (highlight_hover_cell::active, dehighlight_hover_cell::active).chain(),
+                    (
+                        highlight_hover_cell::inactive,
+                        dehighlight_hover_cell::inactive,
+                    )
+                        .chain(),
+                    (highlight_hover_game::active, dehighlight_hover_game::active).chain(),
+                    (
+                        highlight_hover_game::inactive,
+                        dehighlight_hover_game::inactive,
+                    )
+                        .chain(),
                 ),
             )
             .add_systems(Update, mouse_listener_hover);

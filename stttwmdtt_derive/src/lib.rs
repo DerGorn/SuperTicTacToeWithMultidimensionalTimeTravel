@@ -66,7 +66,7 @@ pub fn builder_derive(input: TokenStream) -> TokenStream {
     gen.into()
 }
 
-#[proc_macro_derive(MouseEvent)]
+#[proc_macro_derive(WrapperEvent)]
 pub fn mouse_event_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
     let name = &ast.ident;
@@ -75,10 +75,10 @@ pub fn mouse_event_derive(input: TokenStream) -> TokenStream {
             fields: Fields::Unnamed(FieldsUnnamed { unnamed, .. }),
             ..
         }) if unnamed.len() == 1 => &unnamed.first().unwrap().ty,
-        _ => panic!("Can only derive 'MouseEvent' for TupleStructs with one Field"),
+        _ => panic!("Can only derive 'WrapperEvent' for TupleStructs with one Field"),
     };
     let gen = quote! {
-        impl MouseEvent< #ty > for #name {
+        impl WrapperEvent< #ty > for #name {
             fn value(&self) -> & #ty {
                 &self.0
             }

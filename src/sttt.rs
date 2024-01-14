@@ -109,12 +109,6 @@ impl Plugin for SuperTicTacToePlugin {
                 id += 1;
             }
         }
-        let start_active = (self.games_per_row * self.game_rows / 2) as u64;
-        app.init_resource::<ActiveGame>().add_systems(
-            PostStartup,
-            move |mut active_game: ResMut<ActiveGame>| {
-                active_game.0 = start_active;
-            },
-        );
+        app.init_resource::<ActiveGame>();
     }
 }

@@ -57,19 +57,32 @@ mod camera {
     }
 }
 
+mod active_game_listener;
 mod sttt;
 mod ttt;
 
+const GAME_ROWS: u32 = 3;
+const GAMES_PER_ROW: u32 = 5;
+
+#[cfg(debug_assertions)]
+mod fps;
+
 fn main() {
-    App::new()
+    let mut app = App::new();
+    let app = app
         .add_plugins((
             DefaultPlugins,
             camera::CameraPlugin,
             sttt::SuperTicTacToePlugin::default()
-                .game_rows(3)
-                .games_per_row(5)
+                .game_rows(GAME_ROWS)
+                .games_per_row(GAMES_PER_ROW)
                 .background_color(BACKGORUND_COLOR),
         ))
-        .add_plugins(ttt::MouseListenerPlugin)
-        .run();
+        .add_plugins((ttt::MouseListenerPlugin, ttt::ClickListener::new(GAMES_PER_ROW, GAME_ROWS)))
+        .add_plugins(active_game_listener::ActiveGameListenerPlugin::new(
+            GAMES_PER_ROW as u64 * GAME_ROWS as u64,
+        ));
+    #[cfg(debug_assertions)]
+    let app = app.add_plugins(fps::DiagnosticPlugin);
+    app.run();
 }
